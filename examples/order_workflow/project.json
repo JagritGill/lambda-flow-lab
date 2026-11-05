@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "handlers": {
+    "create": "demo.orders:create",
+    "fulfill": "demo.fulfillment:fulfill",
+    "inspect": "demo.orders:inspect"
+  }
+}

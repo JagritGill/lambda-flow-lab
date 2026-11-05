@@ -1,0 +1,47 @@
+{
+  "product": "Synthetic order workflow",
+  "data_classification": "Hand-authored synthetic fixtures; no customer or employer data.",
+  "scope": "Direct local Python handler calls with actual SQLite state. No AWS, queue, network, UI, or outbox dispatcher.",
+  "handlers": {
+    "create": {
+      "event": {"request_id": "synthetic-request-key", "sku": "DEMO-BOOK", "quantity": 2},
+      "rules": [
+        "The event has exactly request_id, sku, and quantity fields.",
+        "request_id and sku are strings of 1..64 characters; quantity is an integer 1..100, never a boolean.",
+        "A new request returns status created and an order_id, and persists exactly one order with status created.",
+        "The same key and payload return status existing with the original order_id; storage must not grow.",
+        "The same key with different sku or quantity returns status conflict without order_id; storage must not change.",
+        "Invalid events return status invalid_input and must not create orders."
+      ]
+    },
+    "fulfill": {
+      "event": {"order_id": "reference to a create response"},
+      "rules": [
+        "Exactly one nonempty string order_id is required.",
+        "A known order returns status fulfilled and its order_id; its persisted status becomes fulfilled.",
+        "The first fulfillment inserts one OrderFulfilled outbox row.",
+        "Sequential duplicate fulfillment returns the same success shape but MUST NOT insert a second outbox row.",
+        "A missing order returns status not_found and leaves both tables unchanged."
+      ]
+    },
+    "inspect": {
+      "event": {},
+      "rules": [
+        "A local-only observation adapter returns status observed, orders array, and outbox array.",
+        "An optional order_id string filters both arrays; an empty event observes all persisted rows.",
+        "Order rows include order_id, request_id, sku, quantity, status.",
+        "Outbox rows include event_id, order_id, event_type.",
+        "Use storage assertions after processing, rather than relying solely on handler responses."
+      ]
+    }
+  },
+  "invariants": [
+    "Each scenario starts with empty storage and never depends on a previous scenario.",
+    "Use $from references to pass created order identifiers across steps.",
+    "A fulfilled order produces one outbox event even when sequential requests repeat.",
+    "Rejected input leaves persisted state unchanged.",
+    "Positive and negative workflows must retain meaningful explicit assertions."
+  ],
+  "required_scenarios": ["happy_path", "duplicate_submission", "duplicate_fulfillment", "conflicting_submission", "invalid_input", "missing_order"],
+  "unverified": ["AWS delivery and retries", "IAM", "DynamoDB", "concurrent requests", "API Gateway", "outbox dispatch", "browser workflow"]
+}

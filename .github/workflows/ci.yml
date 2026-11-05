@@ -1,0 +1,51 @@
+name: Offline checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ['3.11', '3.12', '3.13']
+        include:
+          - os: windows-latest
+            python: '3.13'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit and local component integration tests
+        run: python -m unittest discover -s tests -v
+      - name: Prove an unchanged workflow catches a code regression
+        run: python scripts/regression_demo.py
+      - name: Validate and replay the complete example
+        run: |
+          python -m lambda_flow_lab validate examples/order_workflow/flows.json --project examples/order_workflow/project.json
+          python -m lambda_flow_lab run examples/order_workflow/flows.json --project examples/order_workflow/project.json --output artifacts/report.json
+          python -m lambda_flow_lab compare artifacts/report.json artifacts/report.json --output artifacts/comparison.json
+          python -m lambda_flow_lab aws-plan examples/order_workflow/flows.json --project examples/order_workflow/project.json --output artifacts/aws-plan.json
+      - name: Preserve payload-free evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: local-evidence-${{ matrix.os }}-${{ matrix.python }}
+          path: artifacts/
+          retention-days: 7
+      - name: Build and install the package
+        run: |
+          python -m pip wheel --no-deps --wheel-dir dist .
+          python -m pip install --no-deps --no-index --find-links dist lambda-flow-lab
+          lambda-flow-lab --version

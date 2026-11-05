@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lambda-flow-lab"
+version = "0.1.0"
+description = "Reviewable AI-assisted workflow tests and honest local integration evidence for AWS Lambda applications"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name = "Jagrit Gill"}]
+keywords = ["aws", "lambda", "integration-testing", "regression-testing", "ai"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Testing",
+]
+dependencies = []
+
+[project.scripts]
+lambda-flow-lab = "lambda_flow_lab.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/JagritGill/lambda-flow-lab"
+Issues = "https://github.com/JagritGill/lambda-flow-lab/issues"
+
+[tool.setuptools.packages.find]
+include = ["lambda_flow_lab*"]

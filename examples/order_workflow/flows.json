@@ -1,0 +1,188 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "happy_path",
+      "description": "Create, fulfill, and observe one persisted order and one outbox event.",
+      "steps": [
+        {
+          "id": "create_order",
+          "handler": "create",
+          "event": {"request_id": "synthetic-happy", "sku": "DEMO-BOOK", "quantity": 2},
+          "expect": [{"path": "/status", "equals": "created"}, {"path": "/order_id", "exists": true}]
+        },
+        {
+          "id": "observe_before",
+          "handler": "inspect",
+          "event": {"order_id": {"$from": "create_order#/order_id"}},
+          "expect": [
+            {"path": "/orders", "length": 1},
+            {"path": "/orders/0/status", "equals": "created"},
+            {"path": "/outbox", "length": 0}
+          ]
+        },
+        {
+          "id": "fulfill_order",
+          "handler": "fulfill",
+          "event": {"order_id": {"$from": "create_order#/order_id"}},
+          "expect": [{"path": "/status", "equals": "fulfilled"}]
+        },
+        {
+          "id": "observe_after",
+          "handler": "inspect",
+          "event": {"order_id": {"$from": "create_order#/order_id"}},
+          "expect": [
+            {"path": "/orders", "length": 1},
+            {"path": "/orders/0/status", "equals": "fulfilled"},
+            {"path": "/orders/0/sku", "equals": "DEMO-BOOK"},
+            {"path": "/orders/0/quantity", "equals": 2},
+            {"path": "/outbox", "length": 1},
+            {"path": "/outbox/0/event_type", "equals": "OrderFulfilled"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "duplicate_submission",
+      "description": "Reusing the same request key and payload leaves one fulfillable order.",
+      "steps": [
+        {
+          "id": "first_submission",
+          "handler": "create",
+          "event": {"request_id": "synthetic-duplicate", "sku": "DEMO-PEN", "quantity": 3},
+          "expect": [{"path": "/status", "equals": "created"}]
+        },
+        {
+          "id": "repeat_submission",
+          "handler": "create",
+          "event": {"request_id": "synthetic-duplicate", "sku": "DEMO-PEN", "quantity": 3},
+          "expect": [{"path": "/status", "equals": "existing"}, {"path": "/order_id", "exists": true}]
+        },
+        {
+          "id": "fulfill_order",
+          "handler": "fulfill",
+          "event": {"order_id": {"$from": "repeat_submission#/order_id"}},
+          "expect": [{"path": "/status", "equals": "fulfilled"}]
+        },
+        {
+          "id": "observe_state",
+          "handler": "inspect",
+          "event": {},
+          "expect": [
+            {"path": "/orders", "length": 1},
+            {"path": "/orders/0/request_id", "equals": "synthetic-duplicate"},
+            {"path": "/orders/0/quantity", "equals": 3},
+            {"path": "/orders/0/status", "equals": "fulfilled"},
+            {"path": "/outbox", "length": 1}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "duplicate_fulfillment",
+      "description": "A successful repeated fulfillment response must not hide a second outbox row.",
+      "steps": [
+        {
+          "id": "create_order",
+          "handler": "create",
+          "event": {"request_id": "synthetic-repeat-fulfill", "sku": "DEMO-CARD", "quantity": 1},
+          "expect": [{"path": "/status", "equals": "created"}]
+        },
+        {
+          "id": "first_fulfillment",
+          "handler": "fulfill",
+          "event": {"order_id": {"$from": "create_order#/order_id"}},
+          "expect": [{"path": "/status", "equals": "fulfilled"}]
+        },
+        {
+          "id": "repeat_fulfillment",
+          "handler": "fulfill",
+          "event": {"order_id": {"$from": "create_order#/order_id"}},
+          "expect": [{"path": "/status", "equals": "fulfilled"}]
+        },
+        {
+          "id": "observe_state",
+          "handler": "inspect",
+          "event": {},
+          "expect": [
+            {"path": "/orders", "length": 1},
+            {"path": "/orders/0/status", "equals": "fulfilled"},
+            {"path": "/outbox", "length": 1},
+            {"path": "/outbox/0/event_type", "equals": "OrderFulfilled"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conflicting_submission",
+      "description": "Changing an order under an existing request key is rejected without changing storage.",
+      "steps": [
+        {
+          "id": "create_order",
+          "handler": "create",
+          "event": {"request_id": "synthetic-conflict", "sku": "DEMO-BOOK", "quantity": 2},
+          "expect": [{"path": "/status", "equals": "created"}]
+        },
+        {
+          "id": "conflict",
+          "handler": "create",
+          "event": {"request_id": "synthetic-conflict", "sku": "DEMO-BOOK", "quantity": 9},
+          "expect": [{"path": "/status", "equals": "conflict"}, {"path": "/order_id", "exists": false}]
+        },
+        {
+          "id": "observe_state",
+          "handler": "inspect",
+          "event": {},
+          "expect": [
+            {"path": "/orders", "length": 1},
+            {"path": "/orders/0/quantity", "equals": 2},
+            {"path": "/orders/0/status", "equals": "created"},
+            {"path": "/outbox", "length": 0}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "invalid_input",
+      "description": "Invalid and boolean quantities leave no orders or outbox events.",
+      "steps": [
+        {
+          "id": "invalid_quantity",
+          "handler": "create",
+          "event": {"request_id": "synthetic-invalid", "sku": "DEMO-BOOK", "quantity": 0},
+          "expect": [{"path": "/status", "equals": "invalid_input"}]
+        },
+        {
+          "id": "boolean_quantity",
+          "handler": "create",
+          "event": {"request_id": "synthetic-boolean", "sku": "DEMO-BOOK", "quantity": true},
+          "expect": [{"path": "/status", "equals": "invalid_input"}]
+        },
+        {
+          "id": "observe_state",
+          "handler": "inspect",
+          "event": {},
+          "expect": [{"path": "/orders", "length": 0}, {"path": "/outbox", "length": 0}]
+        }
+      ]
+    },
+    {
+      "id": "missing_order",
+      "description": "Fulfilling a nonexistent identifier creates no ghost order or outbox event.",
+      "steps": [
+        {
+          "id": "fulfill_missing",
+          "handler": "fulfill",
+          "event": {"order_id": "synthetic-missing-order"},
+          "expect": [{"path": "/status", "equals": "not_found"}]
+        },
+        {
+          "id": "observe_state",
+          "handler": "inspect",
+          "event": {},
+          "expect": [{"path": "/orders", "length": 0}, {"path": "/outbox", "length": 0}]
+        }
+      ]
+    }
+  ]
+}
